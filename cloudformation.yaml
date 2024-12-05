@@ -1,0 +1,134 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "AWS Assignment for Data Engineer Role"
+
+Resources:
+  MyDataBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: "data-engineer-assignment-eyal-moses"
+      # Enable Server Access Logging
+      LoggingConfiguration:
+        DestinationBucketName: "my-logs-bucket"
+        LogFilePrefix: "logs/"
+      Tags:
+        - Key: "Name"
+          Value: "DataEngineerAssignmentBucket"
+        - Key: "Environment"
+          Value: "Assignment"
+
+  MyLogsBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: "my-logs-bucket"
+      AccessControl: "LogDeliveryWrite"
+      Tags:
+        - Key: "Name"
+          Value: "LogsBucket"
+        - Key: "Environment"
+          Value: "Assignment"
+
+  GlueDatabase:
+    Type: "AWS::Glue::Database"
+    Properties:
+      CatalogId: !Ref "AWS::AccountId"
+      DatabaseInput:
+        Name: "stocks_analysis_2024"
+      Tags:
+        - Key: "Name"
+          Value: "StocksAnalysisDatabase"
+        - Key: "Environment"
+          Value: "Assignment"
+
+  GlueTableAverageDailyReturn:
+    Type: "AWS::Glue::Table"
+    Properties:
+      CatalogId: !Ref "AWS::AccountId"
+      DatabaseName: !Ref "GlueDatabase"
+      TableInput:
+        Name: "average_daily_return"
+        StorageDescriptor:
+          Columns:
+            - Name: "date"
+              Type: "string"
+            - Name: "average_return"
+              Type: "double"
+          Location: "s3://data-engineer-assignment-eyal-moses/glue_etl1_one/"
+          InputFormat: "org.apache.hadoop.mapred.TextInputFormat"
+          OutputFormat: "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
+          SerdeInfo:
+            SerializationLibrary: "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+      Tags:
+        - Key: "Name"
+          Value: "AverageDailyReturnTable"
+        - Key: "Environment"
+          Value: "Assignment"
+
+  GlueJob:
+    Type: "AWS::Glue::Job"
+    Properties:
+      Name: "stocks_analysis_job"
+      Role: !GetAtt GlueJobRole.Arn
+      Command:
+        Name: "glueetl"
+        ScriptLocation: "s3://data-engineer-assignment-eyal-moses/scripts/glue_etl1_one.py"
+      DefaultArguments:
+        "--TempDir": "s3://data-engineer-assignment-eyal-moses/temp/"
+        "--job-language": "python"
+        "--input_path": "s3://data-engineer-assignment-eyal-moses/stocks_data.csv"
+        "--output_path": "s3://data-engineer-assignment-eyal-moses/glue_etl1_one/"
+      GlueVersion: "2.0"
+      MaxRetries: 1
+      Timeout: 60
+      Tags:
+        - Key: "Name"
+          Value: "StocksAnalysisJob"
+        - Key: "Environment"
+          Value: "Assignment"
+
+  GlueJobRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "glue.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: "GlueJobPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action: "s3:*"
+                Resource:
+                  - "arn:aws:s3:::data-engineer-assignment-eyal-moses/*"
+                  - "arn:aws:s3:::my-logs-bucket/*"
+              - Effect: "Allow"
+                Action: "glue:*"
+                Resource: "*"
+              - Effect: "Allow"
+                Action: "cloudwatch:*"
+                Resource: "*"
+
+Outputs:
+  DataBucketName:
+    Description: "Name of the S3 bucket to store data"
+    Value: !Ref MyDataBucket
+
+  LogsBucketName:
+    Description: "Name of the S3 bucket for storing logs"
+    Value: !Ref MyLogsBucket
+
+  GlueDatabaseName:
+    Description: "Name of the Glue database"
+    Value: !Ref GlueDatabase
+
+  GlueTableName:
+    Description: "Name of the Glue table for average daily returns"
+    Value: !Ref GlueTableAverageDailyReturn
+
+  GlueJobName:
+    Description: "Name of the Glue job"
+    Value: !Ref GlueJob
